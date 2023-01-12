@@ -1,0 +1,237 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+
+```{r test, echo = FALSE}
+
+#Loading packages
+library("readxl")
+library("lubridate") 
+library("dplyr")
+library("PerformanceAnalytics")
+library("quantmod")
+library("fPortfolio")
+library('FinCovRegularization')
+library("randomcoloR")
+library("ggplot2")
+
+#Loading currency data, converting to JPY, standardising currencies
+data <- read_excel("ETFfxReturns.xlsx")
+currencydata <- read_excel("ETFfxReturns.xlsx", sheet = 3)
+data$`AGG US Equity` = (1+data$`AGG US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`SCHP US Equity` = (1+data$`SCHP US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`VCSH US Equity` = (1+data$`SCHP US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`BNDX US Equity` = (1+data$`BNDX US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`VWOB US Equity` = (1+data$`VWOB US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`VOO US Equity` = (1+data$`VOO US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`VO US Equity` = (1+data$`VO US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`VSS US Equity` = (1+data$`VSS US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`VGK US Equity` = (1+data$`VGK US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`VWO US Equity` = (1+data$`VWO US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`VNQ US Equity` = (1+data$`VNQ US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`VNQI US Equity` = (1+data$`VNQI US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`IAU US Equity` = (1+data$`IAU US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$`BCI US Equity` = (1+data$`BCI US Equity`)*(1+currencydata$USDJPY.Curncy) - 1
+data$x = as.Date(data$x)
+data$year = year(data$x)
+
+
+#Data cleaning
+TSdata2<- xts(data[,-1], order.by = data$x)
+yearly <- apply.yearly(TSdata2, Return.cumulative)
+monthly <- apply.monthly(TSdata2, Return.cumulative)
+test <- yearly[1:18,3:18]
+testfull <-yearly[1:18,]
+actual <- yearly
+
+
+#Setting of portfolio specifications and constraints
+spec2 <- portfolioSpec()
+setRiskFreeRate(spec2) <- colMeans(yearly[, 2])
+#setTargetRisk(spec2) <- 0.15
+setNFrontierPoints(spec2) <- 100
+setTargetReturn(spec2) <- 0.11
+
+tangency <- tangencyPortfolio(as.timeSeries(test), spec = spec2
+    , constraints = c("maxW[colnames(yearly)[c(3:18)]]=0.25", "minW[colnames(yearly)[c(3:18)]]=0.01"))
+
+minvar <- minvariancePortfolio(as.timeSeries(test), spec = spec2
+    , constraints = c("maxW[colnames(yearly)[c(3:18)]]=0.25", "minW[colnames(yearly)[c(3:18)]]=0.01"))
+
+maxreturn <- maxreturnPortfolio(as.timeSeries(test), spec = spec2
+    , constraints = c("maxW[colnames(yearly)[c(3:18)]]=0.25", "minW[colnames(yearly)[c(3:18)]]=0.01"))
+
+minvariance <- minvariancePortfolio(as.timeSeries(test), spec = spec2
+    , constraints = c("maxW[colnames(yearly)[c(3:18)]]=0.25", "minW[colnames(yearly)[c(3:18)]]=0.01"))
+
+tangencyfrontier <- portfolioFrontier(as.timeSeries(test), spec = spec2
+    , constraints = c("maxW[colnames(yearly)[c(3:18)]]=0.25", "minW[colnames(yearly)[c(3:18)]]=0.01"))
+
+
+#Weights charts (For visualisation only, not submitted)
+plot(tangencyfrontier, c(1, 2, 4))
+pie(getWeights(tangency))
+pie(getWeights(minvar))
+pie(getWeights(maxreturn))
+
+
+#Plotting pretty weights charts (Used for submission)
+tangencyweights <- getWeights(tangency)
+minvarweights <- getWeights(minvar)
+maxreturnweights <- getWeights(maxreturn)
+colours <- randomColor(count = 16, luminosity = "light")
+
+plot3 <- barplot(maxreturnweights * 100, horiz = FALSE, las = 3, cex.names = 0.6, col = colours, ylab = "Percentage of Portfolio (%)", main = "Portfolio for High Risk")
+text(plot3, y = 0, round(maxreturnweights * 100, 1), pos = 3, cex = 0.8)
+
+plot1 <- barplot(tangencyweights * 100, horiz = FALSE, las = 3, cex.names = 0.6, col = colours, ylab = "Percentage of Portfolio (%)", main = "Portfolio for Medium Risk")
+text(plot1, y = 0, round(tangencyweights * 100, 1), pos = 3, cex = 0.8)
+
+plot2 <- barplot(minvarweights * 100, horiz = FALSE, las = 3, cex.names = 0.6, col = colours, ylab = "Percentage of Portfolio (%)", main = "Portfolio for Low Risk")
+text(plot2, y = 0, round(minvarweights * 100, 1), pos = 3, cex = 0.8)
+
+
+#calculate returns and related statistics
+returns <- as.matrix(test)
+tangencyweights <- as.matrix(getWeights(tangency))
+minvarweights <- as.matrix(getWeights(minvar))
+maxreturnweights <- as.matrix(getWeights(maxreturn))
+tangencyreturns <- returns %*% tangencyweights
+minvarreturns <- returns %*% minvarweights
+maxreturnreturns <- as.timeSeries(returns %*% maxreturnweights)
+yearlyreturns <- cumprod(testfull$mkt +1) - 1
+minvarcum <- cumprod(minvarreturns[, 1] + 1) - 1
+maxreturncum <- cumprod(maxreturnreturns[, 1] + 1) - 1
+tangencycum <- cumprod(tangencyreturns[, 1] + 1) - 1
+ggplot(data = yearlyreturns, aes(x = as.Date(index(testfull)), y = mkt, color = "Market Benchmark")) +
+  geom_line() +
+geom_line(aes(x = as.Date(index(test)), y = maxreturncum, color = "High Risk")) +
+geom_line(aes(x = as.Date(index(test)), y = tangencycum, color = "Medium Risk")) +
+geom_line(aes(x = as.Date(index(test)), y = minvarcum, color = "Low Risk")) +
+labs(x = 'Date',
+       y = 'Cumulative Returns',
+       color = "Legend",
+       title = 'Portfolio Cumulative Returns')
+
+#BETA
+highbeta <- cov(testfull$mkt, maxreturnreturns)/sd(testfull$mkt)**2
+midbeta <- cov(testfull$mkt, tangencyreturns)/sd(testfull$mkt)**2
+lowbeta <- cov(testfull$mkt, minvarreturns)/sd(testfull$mkt)**2
+
+cat("The beta of the high risk portfolio is", highbeta)
+cat("\nThe beta of the medium risk portfolio is", midbeta)
+cat("\nThe beta of the low risk portfolio is", lowbeta)
+
+##Expected Yearly Returns
+highavg <- mean(maxreturnreturns)
+midavg <- mean(tangencyreturns)
+lowavg <- mean(minvarreturns)
+marketavg <- mean(testfull$mkt)
+cat("\nThe expected returns of the high risk portfolio is", highavg)
+cat("\nThe expected returns of the medium risk portfolio is", midavg)
+cat("\nThe expected returns of the low risk portfolio is", lowavg)
+cat("\nThe expected returns of the market portfolio is", marketavg)
+
+#Yearly volatility
+highsd <- sd(maxreturnreturns)
+midsd <- sd(tangencyreturns)
+lowsd <- sd(minvarreturns)
+marketsd <- sd(testfull$mkt)
+cat("\nThe annual volatility of the high risk portfolio is", highsd)
+cat("\nThe annual volatility of the medium risk portfolio is", midsd)
+cat("\nThe annual volatility of the low risk portfolio is", lowsd)
+cat("\nThe annual volatility of the market portfolio is", marketsd)
+
+#Sharpe Ratio
+rfavg <- mean(testfull$rf)
+highsharpe <- (highavg-rfavg)/sd(maxreturnreturns)
+midsharpe <- (midavg-rfavg)/sd(tangencyreturns)
+lowsharpe <- (lowavg-rfavg)/sd(minvarreturns)
+marketsharpe <- (marketavg - rfavg)/sd(testfull$mkt)
+cat("\nThe sharpe ratio of the high risk portfolio is", highsharpe)
+cat("\nThe sharpe ratio of the medium risk portfolio is", midsharpe)
+cat("\nThe sharpe ratio of the low risk portfolio is", lowsharpe)
+cat("\nThe sharpe ratio of the market portfolio is", marketsharpe)
+
+
+#Backtesting high return high risk portfolio
+actualreturns <- as.matrix(actual)
+v1 <- c(0.11)
+v2 <- c(0.11)
+v3 <- c(0.11)
+highreturns <- rbind(as.matrix(maxreturnreturns), v1)
+highreturns <- rbind(highreturns, v2)
+highreturns <- rbind(highreturns, v3)
+rownames(highreturns)[19:21] = c("2019-12-31", "2020-12-31", "2021-12-31")
+highreturnscum <- cumprod(highreturns + 1) - 1
+actualhighreturns <- as.timeSeries(actualreturns[,3:18] %*% maxreturnweights)
+actualhighreturnscum <- cumprod(actualhighreturns+1)-1
+ggplot(data = data.frame(actualhighreturnscum[1:21]), aes(x = as.Date(index(yearly[1:21,])), y = actualhighreturnscum[1:21], color = "Actual")) +
+geom_line() + 
+geom_line(aes(x = as.Date(index(yearly[1:21,])), y = highreturnscum, color = "Predicted"))+ 
+labs(x = 'Date',
+       y = 'Cumulative Returns',
+       color = "Legend",
+       title = 'High Risk Portfolio Cumulative Returns')
+
+
+
+#Backtesting mid return mid risk portfolio
+v1 <- c(0.0807987)
+v2 <- c(0.0807987)
+v3 <- c(0.0807987)
+midreturns <- rbind(tangencyreturns, v1)
+midreturns <- rbind(midreturns, v2)
+midreturns <- rbind(midreturns, v3)
+rownames(midreturns)[19:21] = c("2019-12-31", "2020-12-31", "2021-12-31")
+midreturnscum <- cumprod(midreturns + 1) - 1
+actualmidreturns <- as.timeSeries(actualreturns[,3:18] %*% tangencyweights)
+actualmidreturnscum <- cumprod(actualmidreturns+1)-1
+ggplot(data = data.frame(actualmidreturnscum[1:21]), aes(x = as.Date(index(yearly[1:21,])), y = actualmidreturnscum[1:21], color = "Actual")) +
+geom_line() + 
+geom_line(aes(x = as.Date(index(yearly[1:21,])), y = midreturnscum, color = "Predicted"))+ 
+labs(x = 'Date',
+       y = 'Cumulative Returns',
+       color = "Legend",
+       title = 'Medium Risk Portfolio Cumulative Returns')
+
+
+#Backtesting low return low risk portfolio
+v1 <- c(0.05751864)
+v2 <- c(0.05751864)
+v3 <- c(0.05751864)
+lowreturns <- rbind(as.matrix(minvarreturns), v1)
+lowreturns <- rbind(lowreturns, v2)
+lowreturns <- rbind(lowreturns, v3)
+rownames(lowreturns)[19:21] = c("2019-12-31", "2020-12-31", "2021-12-31")
+lowreturnscum <- cumprod(lowreturns + 1) - 1
+actuallowreturns <- as.timeSeries(actualreturns[,3:18] %*% minvarweights)
+actuallowreturnscum <- cumprod(actuallowreturns+1)-1
+ggplot(data = data.frame(actuallowreturnscum[1:21]), aes(x = as.Date(index(yearly[1:21,])), y = actuallowreturnscum[1:21], color = "Actual")) +
+geom_line() + 
+geom_line(aes(x = as.Date(index(yearly[1:21,])), y = lowreturnscum, color = "Predicted"))+ 
+labs(x = 'Date',
+       y = 'Cumulative Returns',
+       color = "Legend",
+       title = 'Low Risk Portfolio Cumulative Returns')
+
+
+#Beta OLS, use actual data ??
+lm2 = lm(formula = tangencyreturns ~ testfull$mkt)
+lm = lm(formula = maxreturnreturns ~ testfull$mkt)
+lm3 = lm(formula = minvarreturns ~ testfull$mkt)
+summary(lm)
+summary(lm2)
+summary(lm3)
+
+```
